@@ -1,0 +1,1460 @@
+================================================================================
+    DOCUMENTATION TECHNIQUE - APPLICATION CONTRÔLE D'ACCÈS RESTAURANT
+================================================================================
+
+Date: 11 décembre 2025
+Projet: Mini-projet Python DSN - Institut Limayrac
+Langage: Python 3.11
+Framework: Tkinter + OpenCV
+
+================================================================================
+                            ARCHITECTURE GÉNÉRALE
+================================================================================
+
+L'application suit une architecture MVC (Modèle-Vue-Contrôleur) avec Tkinter :
+
+================================================================================
+                        CLASSES ET LEURS RESPONSABILITÉS
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ CLASSE                    │ FICHIER                 │ RÔLE                   │
+├───────────────────────────┼─────────────────────────┼────────────────────────┤
+│ Application               │ app.py                  │ Fenêtre principale     │
+│                           │                         │ Orchestration globale  │
+│                           │                         │ Navigation entre vues  │
+├───────────────────────────┼─────────────────────────┼────────────────────────┤
+│ Student                   │ models/student.py       │ Modèle de données      │
+│                           │                         │ Représente un étudiant │
+├───────────────────────────┼─────────────────────────┼────────────────────────┤
+│ AuthService               │ services/auth.py        │ Authentification admin │
+│                           │                         │ Vérification mot passe │
+├───────────────────────────┼─────────────────────────┼────────────────────────┤
+│ CameraService             │ services/camera.py      │ Gestion caméra OpenCV  │
+│                           │                         │ Capture ponctuelle     │
+├───────────────────────────┼─────────────────────────┼────────────────────────┤
+│ FaceStore                 │ services/face_store.py  │ Reconnaissance faciale │
+│                           │                         │ Détection (Haar)       │
+│                           │                         │ Encodage visages       │
+│                           │                         │ Comparaison distances  │
+├───────────────────────────┼─────────────────────────┼────────────────────────┤
+│ StorageService            │ services/storage.py     │ Persistance JSON       │
+│                           │                         │ CRUD étudiants         │
+│                           │                         │ Gestion soldes         │
+├───────────────────────────┼─────────────────────────┼────────────────────────┤
+│ StudentService            │ services/student_       │ Logique métier         │
+│                           │ service.py              │ Enregistrement         │
+│                           │                         │ Reconnaissance         │
+├───────────────────────────┼─────────────────────────┼────────────────────────┤
+│ LoginView                 │ ui/login_view.py        │ Écran de connexion     │
+│                           │                         │ Formulaire auth        │
+├───────────────────────────┼─────────────────────────┼────────────────────────┤
+│ MainMenu                  │ ui/main_menu.py         │ Menu principal         │
+│                           │                         │ Navigation modes       │
+├───────────────────────────┼─────────────────────────┼────────────────────────┤
+│ AddStudentView            │ ui/add_student_view.py  │ Ajout d'étudiant       │
+│                           │                         │ Formulaire + capture   │
+├───────────────────────────┼─────────────────────────┼────────────────────────┤
+│ AccessControlView         │ ui/access_control_      │ Contrôle d'accès       │
+│                           │ view.py                 │ Flux vidéo continu     │
+│                           │                         │ Reconnaissance temps   │
+│                           │                         │ réel + débit solde     │
+└───────────────────────────┴─────────────────────────┴────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+DÉTAILS PAR CLASSE
+═══════════════════════════════════════════════════════════════════════════════
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Application (app.py)                                                      ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+Type : Classe principale Tkinter (hérite de tk.Tk)
+
+Responsabilités :
+-----------------
+• Créer la fenêtre principale (1200x800)
+• Instancier tous les services (pattern Dependency Injection)
+• Gérer la navigation entre les différentes vues
+• Maintenir l'état global de l'application
+
+Méthodes principales :
+----------------------
+__init__()              → Initialisation app + services
+_set_view(widget)       → Remplace vue courante (+ appel teardown)
+show_login()            → Affiche écran connexion
+show_dashboard()        → Affiche menu principal
+show_add_student()      → Affiche formulaire ajout
+show_access_control()   → Affiche contrôle d'accès
+
+Attributs :
+-----------
+auth_service           : AuthService
+camera_service         : CameraService
+face_store             : FaceStore
+student_service        : StudentService
+current_view           : Widget Tkinter actuel
+
+Exemple d'utilisation :
+-----------------------
+if __name__ == "__main__":
+    app = Application()
+    app.mainloop()  # Lance la boucle événementielle Tkinter
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Student (models/student.py)                                               ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+Type : Dataclass Python (modèle de données)
+
+Responsabilités :
+-----------------
+• Représenter un étudiant avec toutes ses informations
+• Fournir une structure de données cohérente
+• Faciliter la sérialisation JSON
+
+Attributs :
+-----------
+student_id      : str              # ID unique (ex: "12345")
+first_name      : str              # Prénom
+last_name       : str              # Nom
+balance         : float            # Solde en € (ex: 5.0)
+image_path      : str              # Chemin photo
+face_encoding   : List[float]      # Vecteur 10,000 floats
+
+Propriétés calculées :
+----------------------
+display_name    : str              # "{first_name} {last_name}"
+
+Méthodes auto-générées (dataclass) :
+------------------------------------
+__init__()       → Constructeur
+__repr__()       → Représentation string
+__eq__()         → Comparaison d'égalité
+__dict__         → Conversion en dictionnaire (pour JSON)
+
+Exemple d'utilisation :
+-----------------------
+student = Student(
+    student_id="12345",
+    first_name="Jean",
+    last_name="Dupont",
+    balance=5.0,
+    image_path="data/images/12345.jpg",
+    face_encoding=[0.1, 0.2, ..., 0.9]
+)
+print(student.display_name)  # "Jean Dupont"
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ AuthService (services/auth.py)                                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+Type : Service métier (authentification)
+
+Responsabilités :
+-----------------
+• Charger les comptes administrateurs depuis data/admins.json
+• Vérifier les identifiants lors de la connexion
+• Gérer la liste des admins autorisés
+
+Méthodes principales :
+----------------------
+__init__(settings_file)     → Charge admins.json
+verify(username, password)  → Vérifie identifiants (retourne bool)
+add_admin(username, pass)   → Ajoute un nouvel admin (optionnel)
+
+Attributs :
+-----------
+settings_file : Path         # Chemin vers admins.json
+_admins       : List[dict]   # Liste des admins chargés
+
+Format attendu admins.json :
+----------------------------
+{
+  "admins": [
+    {"username": "admin", "password": "admin123"}
+  ]
+}
+
+Exemple d'utilisation :
+-----------------------
+auth = AuthService(Path("data/admins.json"))
+if auth.verify("admin", "admin123"):
+    print("Connexion réussie")
+else:
+    print("Identifiants incorrects")
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ CameraService (services/camera.py)                                        ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+Type : Service technique (gestion caméra)
+
+Responsabilités :
+-----------------
+• Capturer des frames depuis la caméra via OpenCV
+• Gérer l'ouverture/fermeture de la caméra pour captures ponctuelles
+• Fournir fallback en cas d'erreur caméra
+
+Méthodes principales :
+----------------------
+capture_frame(camera_index=0, delay_ms=0)  → Capture 1 frame
+save_frame(frame, destination)              → Sauvegarde frame en JPG
+_read_fallback()                            → Lit image de secours (optionnel)
+
+Attributs :
+-----------
+fallback_image : Optional[Path]   # Image de secours si caméra HS
+
+Fonctionnement :
+----------------
+1. Ouvre cv2.VideoCapture(camera_index)
+2. Lit une frame avec cap.read()
+3. Ferme la caméra avec cap.release()
+4. Retourne la frame (numpy array BGR)
+
+Exemple d'utilisation :
+-----------------------
+camera = CameraService()
+frame = camera.capture_frame()  # numpy array shape (H, W, 3)
+camera.save_frame(frame, Path("photo.jpg"))
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ FaceStore (services/face_store.py)                                        ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+Type : Service métier (reconnaissance faciale)
+
+Responsabilités :
+-----------------
+• Détecter les visages sur une image (Haar Cascade)
+• Encoder un visage en vecteur numérique (100x100 normalisé)
+• Calculer la distance entre deux encodages
+• Comparer un encodage avec une liste d'encodages connus
+
+Méthodes principales :
+----------------------
+encode_image(image_path)                → Encode 1er visage trouvé
+encode_faces_from_frame(frame, boxes)   → Encode tous visages détectés
+compute_distance(enc1, enc2)            → Distance euclidienne
+compare(known_encodings, target, tol)   → Comparaison multiple
+_detect_faces(image_gray)               → Détection Haar Cascade
+_encode_face_region(gray, x, y, w, h)   → Encodage région
+
+Attributs :
+-----------
+images_dir : Path                    # Dossier de stockage images
+detector   : cv2.CascadeClassifier   # Détecteur Haar Cascade
+
+Algorithme d'encodage :
+-----------------------
+1. Convertir image en niveau de gris
+2. Détecter visages avec Haar Cascade → rectangles (x, y, w, h)
+3. Extraire région du visage (ROI)
+4. Redimensionner à 100x100 pixels
+5. Normaliser valeurs entre [0, 1]
+6. Aplatir matrice → vecteur 10,000 floats
+
+Formule distance :
+------------------
+distance = √(Σ(encoding1[i] - encoding2[i])²)
+
+Exemple d'utilisation :
+-----------------------
+face_store = FaceStore(Path("data/images"))
+
+# Encoder une photo
+encoding = face_store.encode_image(Path("photo.jpg"))
+# → [0.123, 0.456, ..., 0.789]  (10,000 valeurs)
+
+# Comparer deux visages
+distance = face_store.compute_distance(encoding1, encoding2)
+if distance < 15.0:
+    print("Même personne")
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ StorageService (services/storage.py)                                    ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+Type : Service de persistance (couche d'accès aux données)
+
+Responsabilités :
+-----------------
+• Charger les étudiants depuis students.json
+• Sauvegarder les étudiants dans students.json
+• Créer/Mettre à jour un étudiant (upsert)
+• Décrémenter le solde d'un étudiant
+
+Méthodes principales :
+----------------------
+load_students()                        → List[Student]
+save_students(students)                → Sauvegarde en JSON
+upsert_student(student)                → Ajoute/Met à jour
+decrement_balance(student_id, amount)  → Débite solde
+
+Attributs :
+-----------
+students_file : Path    # Chemin vers students.json
+
+Format students.json :
+----------------------
+[
+  {
+    "student_id": "12345",
+    "first_name": "Jean",
+    "last_name": "Dupont",
+    "balance": 5.0,
+    "image_path": "data/images/12345.jpg",
+    "face_encoding": [0.1, 0.2, ..., 0.9]
+  }
+]
+
+Exemple d'utilisation :
+-----------------------
+storage = StorageService(Path("data/students.json"))
+
+# Charger tous les étudiants
+students = storage.load_students()
+
+# Ajouter/modifier un étudiant
+storage.upsert_student(new_student)
+
+# Débiter solde
+updated = storage.decrement_balance("12345", 1.0)
+print(updated.balance)  # Nouveau solde
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ StudentService (services/student_service.py)                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+Type : Service métier (orchestration logique étudiants)
+
+Responsabilités :
+-----------------
+• Orchestrer l'enregistrement d'un nouvel étudiant
+• Effectuer la reconnaissance faciale (match encoding)
+• Décrémenter le solde lors d'un passage
+• Récupérer la liste complète des étudiants
+
+Méthodes principales :
+----------------------
+register_student(id, name, balance, image_path)  → Student
+match_encoding(encoding, tolerance)              → Optional[Student]
+decrement_balance(student_id, amount)            → Optional[Student]
+get_all_students()                               → List[Student]
+
+Attributs :
+-----------
+storage     : StorageService   # Service de persistance
+face_store  : FaceStore        # Service reconnaissance faciale
+
+Workflow register_student :
+---------------------------
+1. Encode le visage depuis image_path (FaceStore)
+2. Crée l'objet Student avec l'encoding
+3. Sauvegarde via StorageService
+4. Retourne l'objet Student créé
+
+Workflow match_encoding :
+-------------------------
+1. Charge tous les étudiants (StorageService)
+2. Pour chaque étudiant, calcule distance avec encoding fourni
+3. Si distance < tolerance, retourne l'étudiant
+4. Sinon retourne None
+
+Exemple d'utilisation :
+-----------------------
+student_service = StudentService(storage, face_store)
+
+# Enregistrer un étudiant
+student = student_service.register_student(
+    student_id="12345",
+    first_name="Jean",
+    last_name="Dupont",
+    balance=5.0,
+    image_path=Path("photo.jpg")
+)
+
+# Reconnaître un visage
+encoding = face_store.encode_image(Path("test.jpg"))
+matched = student_service.match_encoding(encoding, tolerance=15.0)
+if matched:
+    print(f"Reconnu: {matched.display_name}")
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ LoginView (ui/login_view.py)                                              ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+Type : Vue Tkinter (écran de connexion)
+
+Responsabilités :
+-----------------
+• Afficher formulaire de connexion (username + password)
+• Valider les identifiants via AuthService
+• Appeler callback on_success si connexion réussie
+• Afficher message d'erreur si échec
+
+Méthodes principales :
+----------------------
+__init__(master, auth_service, on_success)  → Construit interface
+_handle_login()                             → Gère clic bouton connexion
+
+Attributs :
+-----------
+auth_service  : AuthService          # Service d'authentification
+on_success    : Callable[[], None]   # Callback si connexion OK
+username_var  : tk.StringVar         # Variable Tkinter username
+password_var  : tk.StringVar         # Variable Tkinter password
+
+Composants Tkinter :
+--------------------
+- Titre "Connexion administrateur"
+- Label + Entry pour username
+- Label + Entry pour password (mode masqué)
+- Bouton "Se connecter"
+
+Exemple d'utilisation :
+-----------------------
+def on_login_success():
+    print("Connexion réussie")
+    app.show_dashboard()
+
+login_view = LoginView(
+    root,
+    auth_service=auth_service,
+    on_success=on_login_success
+)
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ MainMenu (ui/main_menu.py)                                                ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+Type : Vue Tkinter (menu principal)
+
+Responsabilités :
+-----------------
+• Afficher les options du menu principal
+• Rediriger vers mode "Ajout étudiant"
+• Rediriger vers mode "Contrôle d'accès"
+• Permettre la déconnexion
+
+Méthodes principales :
+----------------------
+__init__(master, on_add_student, on_access_control, on_logout)
+
+Attributs (callbacks) :
+-----------------------
+on_add_student      : Callable[[], None]   # Vers ajout étudiant
+on_access_control   : Callable[[], None]   # Vers contrôle accès
+on_logout           : Callable[[], None]   # Vers connexion
+
+Composants Tkinter :
+--------------------
+- Titre "Contrôle d'accès - Tableau de bord"
+- Bouton "Ajouter un nouvel étudiant"
+- Bouton "Contrôle d'accès"
+- Bouton "Se déconnecter"
+
+Exemple d'utilisation :
+-----------------------
+menu = MainMenu(
+    root,
+    on_add_student=app.show_add_student,
+    on_access_control=app.show_access_control,
+    on_logout=app.show_login
+)
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ AddStudentView (ui/add_student_view.py)                                   ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+Type : Vue Tkinter (formulaire ajout étudiant)
+
+Responsabilités :
+-----------------
+• Afficher formulaire de saisie (ID, nom, prénom, solde)
+• Permettre capture photo via webcam (mode continu touche C)
+• Permettre import photo depuis fichier
+• Valider et enregistrer l'étudiant via StudentService
+• Afficher messages de confirmation/erreur
+
+Méthodes principales :
+----------------------
+__init__(master, student_service, camera_service, on_back)
+_start_preview()      → Lance prévisualisation continue (OpenCV)
+_import_image()       → Import depuis fichier
+_submit()             → Valide et enregistre étudiant
+_reset_form()         → Réinitialise le formulaire
+
+Attributs :
+-----------
+student_service   : StudentService
+camera_service    : CameraService
+on_back           : Callable[[], None]
+selected_image    : Optional[Path]       # Photo sélectionnée
+student_id_var    : tk.StringVar
+first_name_var    : tk.StringVar
+last_name_var     : tk.StringVar
+balance_var       : tk.StringVar
+photo_status      : tk.StringVar
+
+Composants Tkinter :
+--------------------
+- Titre "Ajout d'un étudiant"
+- Entry : Identifiant
+- Entry : Prénom
+- Entry : Nom
+- Entry : Solde initial (€)
+- Label : Statut photo
+- Bouton "Mode prévisualisation continue (touche C)"
+- Bouton "Choisir un fichier..."
+- Bouton "Enregistrer"
+- Bouton "Retour"
+
+Workflow capture :
+------------------
+1. Utilisateur clique "Mode prévisualisation"
+2. Fenêtre OpenCV s'ouvre avec flux continu
+3. Utilisateur appuie sur C pour capturer
+4. Image sauvegardée dans data/images/{id}.jpg
+5. Statut mis à jour "Photo capturée"
+
+Exemple d'utilisation :
+-----------------------
+add_view = AddStudentView(
+    root,
+    student_service=student_service,
+    camera_service=camera_service,
+    on_back=app.show_dashboard
+)
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ AccessControlView (ui/access_control_view.py)                             ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+Type : Vue Tkinter (contrôle d'accès temps réel)
+
+Responsabilités :
+-----------------
+• Ouvrir la caméra en mode continu (pas de fermeture entre frames)
+• Afficher flux vidéo en temps réel (20 FPS)
+• Détecter et reconnaître les visages automatiquement
+• Dessiner overlays (rectangles verts/rouges + noms)
+• Débiter le solde automatiquement avec cooldown anti-doublon
+• Afficher statut et dernier passage
+
+Méthodes principales :
+----------------------
+__init__(master, student_service, camera_service, face_store, on_back)
+_update_preview_with_recognition()    → Boucle principale (20 FPS)
+_handle_back()                        → Retour menu
+teardown()                            → Fermeture propre caméra
+
+Attributs :
+-----------
+student_service       : StudentService
+camera_service        : CameraService
+face_store            : FaceStore
+on_back               : Callable[[], None]
+debit_amount          : float = 1.0           # Montant débité
+_cap                  : cv2.VideoCapture      # Caméra ouverte
+_running              : bool                  # Contrôle boucle
+_last_detection_time  : float                 # Pour cooldown
+_cooldown_seconds     : int = 3               # Délai anti-doublon
+status_var            : tk.StringVar          # Statut reconnaissance
+last_event_var        : tk.StringVar          # Dernier passage
+
+Composants Tkinter :
+--------------------
+- En-tête : Titre + Bouton "← Retour au menu"
+- Label : Flux vidéo (800x600)
+- Label : Statut (ex: "✓ Accès autorisé : Jean Dupont | Solde : 4.0 €")
+- Label : Dernier passage (ex: "Dernier passage : Jean Dupont à 14:32:15")
+
+Boucle principale (toutes les 50ms) :
+--------------------------------------
+1. Lire frame depuis caméra (_cap.read())
+2. Détecter visages + encoder (face_store.encode_faces_from_frame)
+3. Pour chaque visage :
+   a) Comparer avec base étudiants (student_service.match_encoding)
+   b) Si reconnu :
+      - Rectangle VERT + nom
+      - Vérifier cooldown
+      - Si OK : débiter solde + maj statut
+   c) Si inconnu :
+      - Rectangle ROUGE + "INCONNU"
+      - Afficher "Accès refusé"
+4. Convertir frame BGR → RGB
+5. Redimensionner 800x600
+6. Afficher dans Tkinter (ImageTk.PhotoImage)
+7. Rappeler après 50ms (self.after)
+
+Cooldown anti-doublon :
+-----------------------
+Évite de débiter plusieurs fois le même étudiant.
+Si dernier débit < 3 secondes, on reconnaît mais ne débite pas.
+
+Fermeture propre :
+------------------
+teardown() libère la caméra (_cap.release()) et annule les callbacks.
+
+Exemple d'utilisation :
+-----------------------
+control_view = AccessControlView(
+    root,
+    student_service=student_service,
+    camera_service=camera_service,
+    face_store=face_store,
+    on_back=app.show_dashboard,
+    debit_amount=1.0
+)
+
+================================================================================
+                    INTERACTIONS ENTRE LES CLASSES
+================================================================================
+
+Application
+    │
+    ├──> AuthService          (vérification login)
+    ├──> CameraService        (injected dans vues)
+    ├──> FaceStore            (injected dans StudentService)
+    ├──> StorageService       (injected dans StudentService)
+    └──> StudentService       (orchestration)
+            │
+            ├──> StorageService    (persistance)
+            └──> FaceStore         (reconnaissance)
+
+LoginView ──> AuthService.verify()
+    │
+    └──> Application.show_dashboard()  (si succès)
+
+MainMenu
+    ├──> Application.show_add_student()
+    ├──> Application.show_access_control()
+    └──> Application.show_login()  (déconnexion)
+
+AddStudentView
+    ├──> CameraService.capture_frame()
+    └──> StudentService.register_student()
+            │
+            ├──> FaceStore.encode_image()
+            └──> StorageService.upsert_student()
+
+AccessControlView
+    ├──> cv2.VideoCapture(0)  (direct, caméra continue)
+    ├──> FaceStore.encode_faces_from_frame()
+    ├──> StudentService.match_encoding()
+    │       │
+    │       ├──> StorageService.load_students()
+    │       └──> FaceStore.compute_distance()
+    │
+    └──> StudentService.decrement_balance()
+            │
+            └──> StorageService.decrement_balance()
+
+================================================================================
+
+📁 Structure du projet
+----------------------
+
+projet-python/
+├── app.py                          # Point d'entrée principal
+├── models/                         # Modèles de données
+│   └── student.py                  # Classe Student (dataclass)
+├── services/                       # Logique métier
+│   ├── auth.py                     # Authentification admin
+│   ├── camera.py                   # Gestion caméra OpenCV
+│   ├── face_store.py               # Encodage/reconnaissance faciale
+│   ├── storage.py                  # Persistance JSON
+│   └── student_service.py          # Service métier étudiants
+├── ui/                             # Interfaces Tkinter
+│   ├── login_view.py               # Écran de connexion
+│   ├── main_menu.py                # Menu principal
+│   ├── add_student_view.py         # Ajout d'étudiant
+│   └── access_control_view.py      # Contrôle d'accès vidéo
+├── utils/                          # Utilitaires
+│   └── paths.py                    # Constantes de chemins
+└── data/                           # Données persistées
+    ├── admins.json                 # Comptes administrateurs
+    ├── students.json               # Base d'étudiants
+    └── images/                     # Photos enregistrées
+
+================================================================================
+                        1. APP.PY - POINT D'ENTRÉE
+================================================================================
+
+Rôle : Orchestrateur principal qui crée les services et gère la navigation
+
+Code clé :
+----------
+class Application(tk.Tk):
+    def __init__(self):
+        # Fenêtre principale Tkinter 1200x800
+        self.geometry("1200x800")
+        
+        # Initialisation des services (pattern Dependency Injection)
+        storage = StorageService(STUDENTS_FILE)           # Gestion JSON
+        self.face_store = FaceStore(IMAGES_DIR)          # Reconnaissance faciale
+        self.auth_service = AuthService(ADMINS_FILE)     # Authentification
+        self.camera_service = CameraService()             # Caméra OpenCV
+        self.student_service = StudentService(storage, self.face_store)
+        
+        # Navigation : démarre sur l'écran de connexion
+        self.show_login()
+
+Méthodes de navigation :
+------------------------
+- show_login()           → Affiche écran de connexion
+- show_dashboard()       → Affiche menu principal
+- show_add_student()     → Affiche formulaire ajout étudiant
+- show_access_control()  → Affiche contrôle d'accès vidéo
+- _set_view(widget)      → Remplace la vue courante
+
+================================================================================
+                    2. SERVICES/AUTH.PY - AUTHENTIFICATION
+================================================================================
+
+Rôle : Gestion des comptes administrateurs
+
+Fonctionnement :
+----------------
+1. Charge data/admins.json au démarrage
+2. Vérifie les identifiants lors de la connexion
+3. Mots de passe en clair (simplifié pour le projet)
+
+Code clé :
+----------
+class AuthService:
+    def verify(self, username: str, password: str) -> bool:
+        # Compare username/password avec data/admins.json
+        for admin in self._admins:
+            if admin["username"] == username:
+                return admin["password"] == password
+        return False
+
+Identifiants par défaut :
+-------------------------
+- Username: admin
+- Password: admin123
+
+Fichier data/admins.json :
+--------------------------
+{
+  "admins": [
+    {
+      "username": "admin",
+      "password": "admin123"
+    }
+  ]
+}
+
+================================================================================
+                  3. SERVICES/CAMERA.PY - GESTION CAMÉRA
+================================================================================
+
+Rôle : Capture d'images via OpenCV
+
+Code clé :
+----------
+class CameraService:
+    def capture_frame(self, camera_index: int = 0):
+        cap = cv2.VideoCapture(camera_index)  # Ouvre caméra
+        success, frame = cap.read()            # Capture 1 frame
+        cap.release()                          # Ferme caméra
+        return frame
+
+Utilisation :
+-------------
+- Mode "Ajout étudiant" : captures ponctuelles pour enregistrer photo
+- Mode "Contrôle d'accès" : caméra ouverte en continu dans la vue
+
+================================================================================
+                  4. MODELS/STUDENT.PY - MODÈLE DE DONNÉES
+================================================================================
+
+Rôle : Structure de données pour un étudiant
+
+Code clé :
+----------
+@dataclass
+class Student:
+    student_id: str              # ID unique (ex: "12345")
+    first_name: str              # Prénom
+    last_name: str               # Nom
+    balance: float               # Solde en € (ex: 5.0)
+    image_path: str              # Chemin photo (ex: "data/images/12345.jpg")
+    face_encoding: List[float]   # Encodage facial (10,000 floats)
+    
+    @property
+    def display_name(self) -> str:
+        return f"{self.first_name} {self.last_name}"
+
+Type : Python dataclass (génère automatiquement __init__, __repr__, etc.)
+
+================================================================================
+              5. SERVICES/FACE_STORE.PY - RECONNAISSANCE FACIALE
+================================================================================
+
+Rôle : Détection, encodage et comparaison de visages
+
+Technologies utilisées :
+------------------------
+- OpenCV Haar Cascade pour la détection
+- Distance euclidienne pour la comparaison
+- Encodage simplifié (100x100 pixels normalisés)
+
+═══════════════════════════════════════════════════════════════════════════════
+5.1 DÉTECTION (Haar Cascade)
+═══════════════════════════════════════════════════════════════════════════════
+
+def _detect_faces(self, image_gray):
+    # Détecteur de visages OpenCV (algorithme Haar Cascade)
+    faces = self.detector.detectMultiScale(
+        image_gray, 
+        scaleFactor=1.1,   # Pyramide d'échelles (détection multi-tailles)
+        minNeighbors=5     # Seuil de confiance
+    )
+    return faces  # Liste de rectangles [(x, y, w, h), ...]
+
+Comment ça marche :
+-------------------
+- Haar Cascade analyse l'image avec des motifs pré-entraînés
+- Détecte les visages à différentes échelles
+- Retourne coordonnées des rectangles englobants (x, y, largeur, hauteur)
+
+═══════════════════════════════════════════════════════════════════════════════
+5.2 ENCODAGE
+═══════════════════════════════════════════════════════════════════════════════
+
+def _encode_face_region(self, image_gray, x, y, w, h):
+    roi = image_gray[y:y+h, x:x+w]           # Extraire région visage
+    resized = cv2.resize(roi, (100, 100))    # Redimensionner 100x100
+    norm = resized.astype("float32") / 255.0 # Normaliser [0,1]
+    return norm.flatten().tolist()           # Aplatir en vecteur 10,000 floats
+
+Principe :
+----------
+1. Extraire la région du visage détecté
+2. Redimensionner à 100x100 pixels (standardisation)
+3. Normaliser les valeurs entre 0 et 1
+4. Aplatir la matrice 100x100 en vecteur 1D de 10,000 nombres
+
+Exemple de vecteur :
+-------------------
+[0.123, 0.456, 0.789, ..., 0.321]  # 10,000 valeurs
+
+═══════════════════════════════════════════════════════════════════════════════
+5.3 COMPARAISON
+═══════════════════════════════════════════════════════════════════════════════
+
+def compute_distance(encoding1, encoding2):
+    vec1 = np.array(encoding1)
+    vec2 = np.array(encoding2)
+    return np.linalg.norm(vec1 - vec2)  # Distance euclidienne
+
+Formule mathématique :
+----------------------
+distance = √(Σ(v1[i] - v2[i])²)
+
+Interprétation :
+----------------
+- Distance = 0   → Visages identiques
+- Distance < 15  → Visages similaires (tolérance actuelle)
+- Distance > 15  → Visages différents
+
+Tolérance actuelle : 15.0
+-------------------------
+Plus la valeur est basse, plus la reconnaissance est stricte.
+Avec 15.0, la reconnaissance est très permissive.
+
+Valeurs recommandées :
+- 0.4-0.6 : Stricte (peu de faux positifs, mais peut rater des vrais)
+- 0.8-1.2 : Modérée (équilibre)
+- 15+     : Permissive (beaucoup de faux positifs possibles)
+
+================================================================================
+                6. SERVICES/STORAGE.PY - PERSISTANCE JSON
+================================================================================
+
+Rôle : Sauvegarde et chargement des étudiants
+
+Code clé :
+----------
+class StorageService:
+    def load_students(self) -> List[Student]:
+        raw = json.loads(self.students_file.read_text(encoding="utf-8"))
+        return [Student(**student) for student in raw]
+    
+    def save_students(self, students: List[Student]) -> None:
+        payload = [student.__dict__ for student in students]
+        self.students_file.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False), 
+            encoding="utf-8"
+        )
+    
+    def upsert_student(self, student: Student):
+        students = self.load_students()                    # Charge JSON
+        students = [s for s in students 
+                    if s.student_id != student.student_id] # Supprime doublon
+        students.append(student)                           # Ajoute nouveau
+        self.save_students(students)                       # Sauvegarde
+    
+    def decrement_balance(self, student_id: str, amount: float):
+        students = self.load_students()
+        for student in students:
+            if student.student_id == student_id:
+                student.balance = max(0.0, student.balance - amount)
+                break
+        self.save_students(students)
+
+Format data/students.json :
+---------------------------
+[
+  {
+    "student_id": "12345",
+    "first_name": "Jean",
+    "last_name": "Dupont",
+    "balance": 5.0,
+    "image_path": "data/images/12345.jpg",
+    "face_encoding": [0.123, 0.456, ...] // 10,000 valeurs
+  }
+]
+
+================================================================================
+          7. SERVICES/STUDENT_SERVICE.PY - LOGIQUE MÉTIER
+================================================================================
+
+Rôle : Orchestre les opérations sur les étudiants
+
+Code clé :
+----------
+class StudentService:
+    def register_student(self, student_id, first_name, last_name, 
+                        balance, image_path):
+        # 1. Encoder le visage depuis la photo
+        encoding = self.face_store.encode_image(image_path)
+        
+        # 2. Créer l'objet Student
+        student = Student(
+            student_id=student_id,
+            first_name=first_name,
+            last_name=last_name,
+            balance=balance,
+            image_path=str(image_path),
+            face_encoding=encoding
+        )
+        
+        # 3. Sauvegarder en JSON
+        self.storage.upsert_student(student)
+        return student
+    
+    def match_encoding(self, encoding, tolerance=15):
+        # Compare avec tous les étudiants enregistrés
+        students = self.storage.load_students()
+        for student in students:
+            distance = self.face_store.compute_distance(
+                encoding, 
+                student.face_encoding
+            )
+            if distance < tolerance:
+                return student
+        return None
+
+================================================================================
+        8. UI/ACCESS_CONTROL_VIEW.PY - CONTRÔLE D'ACCÈS VIDÉO
+================================================================================
+
+Rôle : Flux vidéo en continu avec reconnaissance automatique
+
+═══════════════════════════════════════════════════════════════════════════════
+8.1 INITIALISATION
+═══════════════════════════════════════════════════════════════════════════════
+
+def __init__(self, ...):
+    # Ouvrir caméra UNE SEULE FOIS (flux continu)
+    self._cap = cv2.VideoCapture(0)
+    
+    # Variables de contrôle
+    self._running = True
+    self._last_detection_time = 0
+    self._cooldown_seconds = 3  # Anti-doublon
+    
+    # Interface Tkinter
+    self.preview_label = ttk.Label(...)  # Affichage vidéo
+    self.status_var = tk.StringVar(...)  # Statut reconnaissance
+    
+    # Lancer boucle de reconnaissance
+    self._update_preview_with_recognition()
+
+═══════════════════════════════════════════════════════════════════════════════
+8.2 BOUCLE PRINCIPALE (20 FPS)
+═══════════════════════════════════════════════════════════════════════════════
+
+def _update_preview_with_recognition(self):
+    # ┌─────────────────────────────────────────────┐
+    # │ ÉTAPE 1 : Lire frame depuis caméra ouverte │
+    # └─────────────────────────────────────────────┘
+    ret, frame = self._cap.read()  # Lecture non-bloquante
+    frame_display = frame.copy()
+    current_time = time.time()
+    
+    # ┌─────────────────────────────────────────────┐
+    # │ ÉTAPE 2 : Détecter et encoder les visages  │
+    # └─────────────────────────────────────────────┘
+    results = self.face_store.encode_faces_from_frame(frame, with_boxes=True)
+    # results = [(encoding, (x, y, w, h)), ...]
+    
+    # ┌─────────────────────────────────────────────┐
+    # │ ÉTAPE 3 : Comparer avec base d'étudiants   │
+    # └─────────────────────────────────────────────┘
+    for encoding, (x, y, w, h) in results:
+        student = self.student_service.match_encoding(encoding, tolerance=15)
+        
+        if student:
+            # ┌────────────────────────────────────┐
+            # │ VISAGE RECONNU ✓                   │
+            # └────────────────────────────────────┘
+            
+            # Dessiner rectangle VERT + nom
+            cv2.rectangle(frame_display, (x, y), (x+w, y+h), (0, 255, 0), 2)
+            cv2.putText(
+                frame_display, 
+                student.display_name, 
+                (x, y-10),
+                cv2.FONT_HERSHEY_SIMPLEX, 
+                0.6, 
+                (0, 255, 0), 
+                2
+            )
+            
+            # Débiter solde (avec cooldown 3s pour éviter doublons)
+            if current_time - self._last_detection_time > 3:
+                self._last_detection_time = current_time
+                
+                updated = self.student_service.decrement_balance(
+                    student.student_id, 
+                    1.0  # Montant débité
+                )
+                
+                balance = updated.balance
+                self.status_var.set(
+                    f"✓ Accès autorisé : {student.display_name} | "
+                    f"Solde : {balance:.2f} €"
+                )
+        else:
+            # ┌────────────────────────────────────┐
+            # │ VISAGE INCONNU ✗                   │
+            # └────────────────────────────────────┘
+            
+            # Rectangle ROUGE + "INCONNU"
+            cv2.rectangle(frame_display, (x, y), (x+w, y+h), (0, 0, 255), 2)
+            cv2.putText(
+                frame_display, 
+                "INCONNU", 
+                (x, y-10),
+                cv2.FONT_HERSHEY_SIMPLEX, 
+                0.6, 
+                (0, 0, 255), 
+                2
+            )
+            self.status_var.set("✗ Visage non reconnu - Accès refusé")
+    
+    # ┌─────────────────────────────────────────────┐
+    # │ ÉTAPE 4 : Afficher frame dans Tkinter      │
+    # └─────────────────────────────────────────────┘
+    frame_rgb = cv2.cvtColor(frame_display, cv2.COLOR_BGR2RGB)
+    frame_resized = cv2.resize(frame_rgb, (800, 600))
+    img = Image.fromarray(frame_resized)
+    photo = ImageTk.PhotoImage(image=img)
+    self.preview_label.config(image=photo)
+    self.preview_label.image = photo  # Garde référence
+    
+    # ┌─────────────────────────────────────────────┐
+    # │ ÉTAPE 5 : Rappeler dans 50ms (boucle)      │
+    # └─────────────────────────────────────────────┘
+    if self._running:
+        self._after_id = self.after(50, self._update_preview_with_recognition)
+        # 50ms = 20 FPS
+
+Cooldown (anti-doublon) :
+-------------------------
+Sans cooldown, un étudiant serait débité 20 fois par seconde (20 FPS).
+Avec cooldown de 3s, un seul débit toutes les 3 secondes maximum.
+
+Fermeture propre :
+------------------
+def teardown(self):
+    self._running = False          # Arrête la boucle
+    if self._cap:
+        self._cap.release()        # Libère la caméra
+    if self._after_id:
+        self.after_cancel(...)     # Annule les callbacks Tkinter
+
+================================================================================
+                  9. UI/ADD_STUDENT_VIEW.PY - AJOUT ÉTUDIANT
+================================================================================
+
+Rôle : Formulaire d'enregistrement avec capture photo
+
+Fonctionnalités :
+-----------------
+1. Formulaire Tkinter (ID, nom, prénom, solde)
+2. Capture photo via webcam avec prévisualisation continue
+3. Import de fichier image alternatif
+4. Validation et enregistrement
+
+Code clé - Capture continue :
+-----------------------------
+def _start_preview(self):
+    # Ouvre fenêtre OpenCV avec flux continu
+    cap = cv2.VideoCapture(0)
+    
+    while True:
+        ret, frame = cap.read()
+        cv2.imshow("Prévisualisation - Appuyez sur C pour capturer", frame)
+        
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('c'):      # Touche C = capturer
+            self._save_capture(frame)
+            break
+        elif key == ord('q'):    # Touche Q = quitter
+            break
+    
+    cap.release()
+    cv2.destroyAllWindows()
+
+Avantages :
+-----------
+- Utilisateur voit sa tête en temps réel
+- Choisit le meilleur moment pour capturer
+- Pas de capture ratée
+
+================================================================================
+                      10. FLUX DE DONNÉES COMPLET
+================================================================================
+
+═══════════════════════════════════════════════════════════════════════════════
+10.1 AJOUT D'UN ÉTUDIANT
+═══════════════════════════════════════════════════════════════════════════════
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 1. SAISIE FORMULAIRE                                                     │
+│    - ID: "12345"                                                         │
+│    - Nom: "Dupont"                                                       │
+│    - Prénom: "Jean"                                                      │
+│    - Solde: 5.0 €                                                        │
+└──────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 2. CAPTURE PHOTO                                                         │
+│    - OpenCV capture frame                                                │
+│    - Sauvegarde → data/images/12345.jpg                                  │
+└──────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 3. ENCODAGE FACIAL (FaceStore)                                           │
+│    a) Détection Haar Cascade → rectangle (x, y, w, h)                   │
+│    b) Extraction ROI (Region of Interest)                                │
+│    c) Redimensionnement 100x100 pixels                                   │
+│    d) Normalisation [0,1]                                                │
+│    e) Aplatissement → vecteur [10,000 floats]                           │
+└──────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 4. CRÉATION OBJET STUDENT                                                │
+│    Student(                                                              │
+│        student_id="12345",                                               │
+│        first_name="Jean",                                                │
+│        last_name="Dupont",                                               │
+│        balance=5.0,                                                      │
+│        image_path="data/images/12345.jpg",                               │
+│        face_encoding=[0.123, 0.456, ..., 0.789]  # 10,000 valeurs       │
+│    )                                                                     │
+└──────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 5. SAUVEGARDE JSON (StorageService)                                      │
+│    - Charge students.json existant                                       │
+│    - Supprime doublon si ID existe déjà                                  │
+│    - Ajoute nouvel étudiant                                              │
+│    - Sauvegarde data/students.json                                       │
+└──────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+10.2 CONTRÔLE D'ACCÈS (RECONNAISSANCE)
+═══════════════════════════════════════════════════════════════════════════════
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 1. INITIALISATION                                                        │
+│    - Ouvrir caméra cv2.VideoCapture(0)                                   │
+│    - Charger base étudiants depuis students.json                         │
+└──────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 2. BOUCLE INFINIE (20 FPS)                                               │
+│    while running:                                                        │
+│        ↓                                                                 │
+└──────────────────────────────────────────────────────────────────────────┘
+        ↓
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 3. LECTURE FRAME                                                         │
+│    ret, frame = cap.read()                                               │
+│    → Image BGR 640x480 (ou résolution caméra)                            │
+└──────────────────────────────────────────────────────────────────────────┘
+        ↓
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 4. DÉTECTION VISAGES (Haar Cascade)                                      │
+│    results = face_store.encode_faces_from_frame(frame)                   │
+│    → [(encoding1, (x1, y1, w1, h1)), (encoding2, ...), ...]             │
+└──────────────────────────────────────────────────────────────────────────┘
+        ↓
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 5. POUR CHAQUE VISAGE DÉTECTÉ                                            │
+│    for encoding, (x, y, w, h) in results:                               │
+│        ↓                                                                 │
+└──────────────────────────────────────────────────────────────────────────┘
+            ↓
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 6. COMPARAISON AVEC BASE (StudentService)                                │
+│    for student in all_students:                                          │
+│        distance = compute_distance(encoding, student.face_encoding)      │
+│        if distance < 15:  # Tolérance                                    │
+│            → MATCH TROUVÉ                                                │
+└──────────────────────────────────────────────────────────────────────────┘
+            ↓                                    ↓
+    ┌───────────────┐              ┌──────────────────────┐
+    │ RECONNU ✓     │              │ INCONNU ✗            │
+    └───────────────┘              └──────────────────────┘
+            ↓                                    ↓
+┌──────────────────────────────┐  ┌──────────────────────────────┐
+│ 7a. VISAGE RECONNU           │  │ 7b. VISAGE INCONNU           │
+│ - Rectangle VERT             │  │ - Rectangle ROUGE            │
+│ - Afficher nom               │  │ - Afficher "INCONNU"         │
+│ - Vérifier cooldown (3s)     │  │ - Message "Accès refusé"     │
+│ - Débiter solde (-1.0€)      │  │                              │
+│ - Afficher solde restant     │  │                              │
+└──────────────────────────────┘  └──────────────────────────────┘
+            ↓                                    ↓
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 8. AFFICHAGE FRAME                                                       │
+│    - Convertir BGR → RGB                                                 │
+│    - Redimensionner 800x600                                              │
+│    - Convertir → ImageTk.PhotoImage                                      │
+│    - Afficher dans Tkinter Label                                         │
+└──────────────────────────────────────────────────────────────────────────┘
+            ↓
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 9. ATTENDRE 50ms                                                         │
+│    self.after(50, self._update_preview_with_recognition)                 │
+│    → Retour à l'étape 3 (boucle infinie)                                │
+└──────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+                    11. PERFORMANCE ET LIMITATIONS
+================================================================================
+
+═══════════════════════════════════════════════════════════════════════════════
+FORCES
+═══════════════════════════════════════════════════════════════════════════════
+
+✓ Flux vidéo fluide (20 FPS)
+✓ Reconnaissance en temps réel
+✓ Débit automatique avec anti-doublon (cooldown 3s)
+✓ Interface intuitive Tkinter
+✓ Overlay visuel (rectangles + noms)
+✓ Gestion du solde persistée
+✓ Authentification admin
+✓ Logs de passages (timestamp)
+✓ Architecture modulaire (facile à maintenir)
+✓ Pas de dépendances lourdes (dlib/face_recognition)
+
+═══════════════════════════════════════════════════════════════════════════════
+LIMITATIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+✗ Encodage simple (100x100 pixels) moins précis que dlib/face_recognition
+✗ Haar Cascade sensible à l'éclairage et l'angle
+✗ Tolérance 15 très permissive (risque de faux positifs)
+✗ Pas de chiffrement des données (JSON en clair)
+✗ Mots de passe admin en clair
+✗ Pas de logs d'audit persistants
+✗ JSON non optimisé pour grandes bases (>1000 étudiants)
+✗ Mono-utilisateur (pas de concurrence)
+
+═══════════════════════════════════════════════════════════════════════════════
+AMÉLIORATIONS POSSIBLES
+═══════════════════════════════════════════════════════════════════════════════
+
+🔹 Base de données SQLite au lieu de JSON
+   - Requêtes SQL optimisées
+   - Transactions ACID
+   - Index sur student_id
+
+🔹 Hash bcrypt pour mots de passe
+   - Stockage sécurisé
+   - Protection contre rainbow tables
+
+🔹 Logs d'accès persistants (audit trail)
+   - CSV ou table SQLite
+   - Timestamp, étudiant, solde avant/après, statut
+
+🔹 Amélioration reconnaissance
+   - Utiliser face_recognition (dlib)
+   - Tolérance adaptative selon conditions
+   - Multiple photos par étudiant
+
+🔹 Multi-caméras
+   - Gérer plusieurs points d'accès
+   - Configuration dynamique
+
+🔹 Interface d'administration web
+   - Flask/Django
+   - Gestion étudiants à distance
+   - Statistiques/rapports
+
+🔹 Export de données
+   - CSV pour comptabilité
+   - Rapports PDF
+
+🔹 Notifications
+   - Email si solde bas
+   - Alertes si accès refusé
+
+================================================================================
+                           12. CONFIGURATION
+================================================================================
+
+Fichiers de configuration :
+---------------------------
+
+1. utils/paths.py
+   - STUDENTS_FILE: Path("data/students.json")
+   - IMAGES_DIR: Path("data/images")
+   - ADMINS_FILE: Path("data/admins.json")
+
+2. Paramètres modifiables :
+
+   Dans ui/access_control_view.py :
+   - debit_amount: float = 1.0        # Montant débité par passage
+   - _cooldown_seconds: int = 3       # Cooldown anti-doublon
+   - tolerance: float = 15.0          # Seuil de reconnaissance
+   - FPS: int = 20 (50ms)             # Fréquence de rafraîchissement
+
+   Dans app.py :
+   - geometry("1200x800")             # Taille fenêtre
+
+   Dans services/face_store.py :
+   - scaleFactor: float = 1.1         # Haar Cascade
+   - minNeighbors: int = 5            # Haar Cascade
+   - resize: tuple = (100, 100)       # Taille encodage
+
+Identifiants par défaut :
+-------------------------
+Username: admin
+Password: admin123
+
+================================================================================
+                          13. DÉPANNAGE
+================================================================================
+
+Problème : Caméra ne s'ouvre pas
+---------------------------------
+Solution :
+- Vérifier qu'aucune autre application n'utilise la caméra
+- Tester avec cv2.VideoCapture(0) dans un script simple
+- Autoriser l'accès caméra dans paramètres Windows
+
+Problème : Reconnaissance ne fonctionne pas
+-------------------------------------------
+Solution :
+- Vérifier l'éclairage (Haar Cascade sensible)
+- Augmenter la tolérance (15 → 20)
+- Vérifier que face_encoding existe dans students.json
+- Tester avec plusieurs photos du même visage
+
+Problème : Application lente
+-----------------------------
+Solution :
+- Réduire FPS (50ms → 100ms)
+- Réduire résolution vidéo (800x600 → 640x480)
+- Optimiser taille encodage (100x100 → 50x50)
+
+Problème : Débit multiple du même étudiant
+------------------------------------------
+Solution :
+- Augmenter cooldown (3s → 5s)
+- Vérifier que _last_detection_time se met à jour
+
+================================================================================
+                        14. TESTS ET VALIDATION
+================================================================================
+
+Scénarios de test :
+-------------------
+
+1. Test ajout étudiant
+   - Créer étudiant avec photo
+   - Vérifier sauvegarde dans students.json
+   - Vérifier photo dans data/images/
+
+2. Test reconnaissance valide
+   - Étudiant enregistré se présente
+   - Vérifier rectangle vert + nom
+   - Vérifier débit solde
+   - Vérifier message "Accès autorisé"
+
+3. Test reconnaissance invalide
+   - Personne non enregistrée se présente
+   - Vérifier rectangle rouge + "INCONNU"
+   - Vérifier message "Accès refusé"
+   - Vérifier aucun débit
+
+4. Test solde insuffisant
+   - Créer étudiant avec solde 0€
+   - Vérifier reconnaissance mais message "Solde insuffisant"
+
+5. Test cooldown
+   - Même étudiant reste devant caméra
+   - Vérifier un seul débit toutes les 3 secondes
+
+6. Test authentification
+   - Login avec mauvais identifiants → refus
+   - Login avec bons identifiants → accès menu
+
+================================================================================
+                          15. GLOSSAIRE
+================================================================================
+
+BGR : Blue-Green-Red, format couleur OpenCV (inverse du RGB)
+Cooldown : Délai minimum entre deux actions identiques
+Dataclass : Décorateur Python générant automatiquement __init__, etc.
+Encoding : Représentation numérique d'un visage (vecteur)
+FPS : Frames Per Second (images par seconde)
+Haar Cascade : Algorithme de détection d'objets basé sur des motifs
+ImageTk : Module Tkinter pour afficher images PIL/numpy
+JSON : JavaScript Object Notation, format d'échange de données
+OpenCV : Open Computer Vision, bibliothèque de vision par ordinateur
+ROI : Region Of Interest (région d'intérêt dans une image)
+Tkinter : Bibliothèque graphique standard Python
+Tolérance : Seuil de distance pour considérer deux visages comme identiques
+
+================================================================================
+                          FIN DE LA DOCUMENTATION
+================================================================================
+
+Pour toute question ou amélioration, consulter :
+- README.md
+- Code source commenté
+- Documentation officielle OpenCV : https://docs.opencv.org
+- Documentation Tkinter : https://docs.python.org/3/library/tkinter.html
+
