@@ -1432,7 +1432,650 @@ Scénarios de test :
    - Login avec bons identifiants → accès menu
 
 ================================================================================
-                          15. GLOSSAIRE
+                  15. FONCTIONNEMENT DE LA BIBLIOTHÈQUE OPENCV
+================================================================================
+
+OpenCV (Open Computer Vision) est une bibliothèque open-source de vision par
+ordinateur et d'apprentissage automatique.
+
+═══════════════════════════════════════════════════════════════════════════════
+15.1 QU'EST-CE QU'OPENCV ?
+═══════════════════════════════════════════════════════════════════════════════
+
+Créée par Intel en 1999, OpenCV contient plus de 2500 algorithmes optimisés
+pour :
+• Détection et reconnaissance d'objets/visages
+• Tracking d'objets en mouvement
+• Analyse de vidéos
+• Traitement d'images (filtres, transformations)
+• Vision 3D et reconstruction
+• Machine Learning
+
+Langages supportés :
+--------------------
+• Python (notre cas)
+• C++
+• Java
+• MATLAB
+
+Systèmes d'exploitation :
+-------------------------
+• Windows
+• Linux
+• macOS
+• Android
+• iOS
+
+═══════════════════════════════════════════════════════════════════════════════
+15.2 CONCEPTS FONDAMENTAUX
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ A. REPRÉSENTATION D'UNE IMAGE                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Une image en OpenCV est un tableau NumPy 3D :
+
+Structure :
+-----------
+shape = (hauteur, largeur, canaux)
+
+Exemple :
+---------
+image = cv2.imread("photo.jpg")
+print(image.shape)  # (480, 640, 3)
+# 480 pixels de haut
+# 640 pixels de large
+# 3 canaux de couleur (B, G, R)
+
+Accès aux pixels :
+------------------
+# Pixel en position (y=100, x=200)
+pixel = image[100, 200]
+# → [125, 87, 200]  (B, G, R)
+
+# Modifier un pixel (le rendre rouge)
+image[100, 200] = [0, 0, 255]  # BGR
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ B. FORMAT DE COULEURS BGR vs RGB                                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+OpenCV utilise BGR (Blue-Green-Red) au lieu de RGB !
+
+Pourquoi BGR ?
+--------------
+Raison historique : les premières caméras utilisaient ce format.
+
+Conséquence :
+-------------
+Pour afficher avec Matplotlib ou Tkinter (qui utilisent RGB), il faut convertir.
+
+Conversion BGR → RGB :
+----------------------
+rgb_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
+
+Conversion BGR → Niveau de gris :
+----------------------------------
+gray_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2GRAY)
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ C. COORDONNÉES ET RECTANGLES                                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Système de coordonnées :
+------------------------
+(0,0) ────────────────> X (largeur)
+  │
+  │
+  │
+  ↓
+  Y (hauteur)
+
+Rectangle représenté par :
+--------------------------
+(x, y, w, h)
+• x : position horizontale du coin supérieur gauche
+• y : position verticale du coin supérieur gauche
+• w : largeur (width)
+• h : hauteur (height)
+
+Exemple :
+---------
+┌────────────────────────────┐
+│                            │
+│   (100, 50)                │
+│   ┌──────────┐             │
+│   │          │ h=80        │
+│   │  visage  │             │
+│   │          │             │
+│   └──────────┘             │
+│      w=120                 │
+│                            │
+└────────────────────────────┘
+
+Rectangle : (100, 50, 120, 80)
+
+═══════════════════════════════════════════════════════════════════════════════
+15.3 FONCTIONS OPENCV UTILISÉES DANS LE PROJET
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1. cv2.VideoCapture(index)                                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Rôle : Ouvre un flux vidéo (webcam ou fichier)
+
+Paramètres :
+------------
+index : int ou str
+  • 0 = première webcam
+  • 1 = deuxième webcam
+  • "video.mp4" = fichier vidéo
+  • "rtsp://..." = flux réseau
+
+Retour : Objet VideoCapture
+
+Exemple :
+---------
+cap = cv2.VideoCapture(0)  # Ouvre webcam
+
+if cap.isOpened():
+    print("Caméra ouverte")
+else:
+    print("Erreur : caméra indisponible")
+
+cap.release()  # Ferme la caméra
+
+Méthodes principales :
+----------------------
+cap.read()                    → (bool, frame)  # Lit une frame
+cap.release()                 → None           # Ferme la caméra
+cap.isOpened()                → bool           # Vérifie si ouvert
+cap.get(cv2.CAP_PROP_FPS)     → float          # FPS caméra
+cap.set(cv2.CAP_PROP_WIDTH)   → bool           # Change résolution
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 2. cap.read()                                                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Rôle : Lit une frame depuis le flux vidéo
+
+Retour : (success, frame)
+---------
+• success : bool → True si lecture OK
+• frame : numpy.ndarray → Image BGR
+
+Exemple :
+---------
+cap = cv2.VideoCapture(0)
+
+ret, frame = cap.read()
+if ret:
+    print(f"Frame capturée : {frame.shape}")
+    # (480, 640, 3)
+else:
+    print("Échec de lecture")
+
+Boucle infinie (flux continu) :
+--------------------------------
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+    
+    # Traiter la frame
+    cv2.imshow("Video", frame)
+    
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 3. cv2.cvtColor(image, conversion_code)                                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Rôle : Convertit l'espace de couleurs d'une image
+
+Codes de conversion courants :
+-------------------------------
+cv2.COLOR_BGR2RGB        → BGR vers RGB
+cv2.COLOR_BGR2GRAY       → BGR vers niveau de gris
+cv2.COLOR_RGB2BGR        → RGB vers BGR
+cv2.COLOR_BGR2HSV        → BGR vers HSV (teinte, saturation, valeur)
+
+Exemple :
+---------
+bgr_image = cv2.imread("photo.jpg")    # Charge en BGR
+gray_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2GRAY)
+rgb_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
+
+print(bgr_image.shape)   # (480, 640, 3)
+print(gray_image.shape)  # (480, 640)    ← 1 seul canal
+print(rgb_image.shape)   # (480, 640, 3)
+
+Pourquoi convertir en niveau de gris ?
+---------------------------------------
+• Réduit la complexité (1 canal au lieu de 3)
+• Améliore performance des algorithmes
+• Nécessaire pour Haar Cascade
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 4. cv2.CascadeClassifier(xml_path)                                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Rôle : Charge un détecteur d'objets pré-entraîné (Haar Cascade)
+
+Fichiers XML fournis avec OpenCV :
+-----------------------------------
+haarcascade_frontalface_default.xml  → Visages de face
+haarcascade_eye.xml                  → Yeux
+haarcascade_smile.xml                → Sourires
+haarcascade_fullbody.xml             → Corps entier
+
+Exemple :
+---------
+cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+detector = cv2.CascadeClassifier(cascade_path)
+
+Méthode principale :
+--------------------
+detector.detectMultiScale(image, scaleFactor, minNeighbors)
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 5. detector.detectMultiScale(image, scaleFactor, minNeighbors)              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Rôle : Détecte des objets (visages) à différentes échelles
+
+Paramètres :
+------------
+image         : Image en niveau de gris
+scaleFactor   : float (ex: 1.1)
+                → Facteur de réduction entre chaque échelle
+                → Plus petit = plus précis mais plus lent
+minNeighbors  : int (ex: 5)
+                → Nombre minimum de voisins pour valider détection
+                → Plus grand = moins de faux positifs
+
+Retour : Liste de rectangles [(x, y, w, h), ...]
+---------
+
+Exemple :
+---------
+gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+faces = detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
+
+print(faces)
+# array([[100, 50, 120, 120],    ← Visage 1
+#        [300, 80, 110, 110]])   ← Visage 2
+
+for (x, y, w, h) in faces:
+    print(f"Visage détecté à ({x}, {y}) de taille {w}x{h}")
+
+Comment ça marche (Haar Cascade) :
+-----------------------------------
+1. Image parcourue à différentes échelles (pyramide)
+2. À chaque position, algorithme teste des motifs pré-entraînés
+3. Motifs = caractéristiques Haar (différences zones claires/sombres)
+4. Si suffisamment de motifs matchent → visage détecté
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 6. cv2.rectangle(image, pt1, pt2, color, thickness)                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Rôle : Dessine un rectangle sur une image
+
+Paramètres :
+------------
+image      : Image à modifier (modifiée en place !)
+pt1        : tuple (x1, y1) → Coin supérieur gauche
+pt2        : tuple (x2, y2) → Coin inférieur droit
+color      : tuple (B, G, R) → Couleur BGR
+thickness  : int → Épaisseur trait (ou -1 pour remplir)
+
+Exemple :
+---------
+# Rectangle vert autour d'un visage
+x, y, w, h = 100, 50, 120, 120
+cv2.rectangle(image, (x, y), (x+w, y+h), (0, 255, 0), 2)
+#                                         ↑ vert BGR  ↑ 2 pixels
+
+# Rectangle rouge rempli
+cv2.rectangle(image, (200, 100), (300, 200), (0, 0, 255), -1)
+
+Couleurs courantes (BGR) :
+--------------------------
+Rouge    : (0, 0, 255)
+Vert     : (0, 255, 0)
+Bleu     : (255, 0, 0)
+Jaune    : (0, 255, 255)
+Magenta  : (255, 0, 255)
+Cyan     : (255, 255, 0)
+Blanc    : (255, 255, 255)
+Noir     : (0, 0, 0)
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 7. cv2.putText(image, text, org, font, scale, color, thickness)             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Rôle : Écrit du texte sur une image
+
+Paramètres :
+------------
+image      : Image à modifier
+text       : str → Texte à afficher
+org        : tuple (x, y) → Position coin inférieur gauche du texte
+font       : cv2.FONT_* → Police de caractères
+scale      : float → Taille police (ex: 0.6)
+color      : tuple (B, G, R) → Couleur BGR
+thickness  : int → Épaisseur trait
+
+Polices disponibles :
+---------------------
+cv2.FONT_HERSHEY_SIMPLEX       → Standard, lisible
+cv2.FONT_HERSHEY_PLAIN         → Petite
+cv2.FONT_HERSHEY_COMPLEX       → Complexe
+cv2.FONT_HERSHEY_SCRIPT_SIMPLEX → Script
+
+Exemple :
+---------
+cv2.putText(
+    image,
+    "Jean Dupont",           # Texte
+    (100, 50),               # Position
+    cv2.FONT_HERSHEY_SIMPLEX,
+    0.6,                     # Taille
+    (0, 255, 0),             # Vert
+    2                        # Épaisseur
+)
+
+Astuce positionnement :
+-----------------------
+Pour texte au-dessus d'un rectangle :
+x, y, w, h = visage_coords
+cv2.putText(image, nom, (x, y-10), ...)  # y-10 pour être au-dessus
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 8. cv2.resize(image, dsize, interpolation)                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Rôle : Redimensionne une image
+
+Paramètres :
+------------
+image         : Image source
+dsize         : tuple (width, height) → Nouvelle taille
+interpolation : Méthode d'interpolation (optionnel)
+                • cv2.INTER_LINEAR (défaut) → Bilinéaire
+                • cv2.INTER_AREA → Rétrécissement
+                • cv2.INTER_CUBIC → Bicubique (qualité)
+
+Exemple :
+---------
+image = cv2.imread("photo.jpg")  # (1080, 1920, 3)
+
+# Redimensionner à 640x480
+resized = cv2.resize(image, (640, 480))
+print(resized.shape)  # (480, 640, 3)
+
+# Attention : (width, height) mais shape donne (height, width, channels) !
+
+# Réduction pour miniature
+thumbnail = cv2.resize(image, (100, 100), interpolation=cv2.INTER_AREA)
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 9. cv2.imread(filepath) et cv2.imwrite(filepath, image)                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Rôle : Lire et écrire des images sur disque
+
+cv2.imread(filepath, flags) :
+-----------------------------
+Paramètres :
+  filepath : str ou Path → Chemin fichier
+  flags : (optionnel)
+    • cv2.IMREAD_COLOR (défaut) → Charge en BGR
+    • cv2.IMREAD_GRAYSCALE → Charge en niveau de gris
+    • cv2.IMREAD_UNCHANGED → Inclut canal alpha
+
+Retour : numpy.ndarray ou None si échec
+
+Exemple :
+---------
+image = cv2.imread("photo.jpg")
+if image is None:
+    print("Erreur : fichier introuvable")
+else:
+    print(f"Image chargée : {image.shape}")
+
+gray = cv2.imread("photo.jpg", cv2.IMREAD_GRAYSCALE)
+
+
+cv2.imwrite(filepath, image) :
+------------------------------
+Paramètres :
+  filepath : str ou Path → Chemin destination
+  image : numpy.ndarray → Image à sauvegarder
+
+Retour : bool → True si succès
+
+Exemple :
+---------
+success = cv2.imwrite("output.jpg", image)
+if success:
+    print("Image sauvegardée")
+
+# Format automatique selon extension
+cv2.imwrite("image.png", image)  # PNG
+cv2.imwrite("image.jpg", image)  # JPEG
+
+═══════════════════════════════════════════════════════════════════════════════
+15.4 HAAR CASCADE : COMMENT ÇA MARCHE ?
+═══════════════════════════════════════════════════════════════════════════════
+
+Haar Cascade est un algorithme de détection d'objets proposé par Paul Viola
+et Michael Jones en 2001.
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PRINCIPE                                                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. Caractéristiques de Haar (Haar-like features)
+-------------------------------------------------
+
+Ce sont des motifs rectangulaires simples qui mesurent les différences
+d'intensité lumineuse entre zones adjacentes.
+
+Exemples de motifs :
+--------------------
+
+┌────┬────┐     ┌─────────┐     ┌────┬────┐
+│    │████│     │         │     │████│    │
+│    │████│     │─────────│     │████│    │
+└────┴────┘     │█████████│     └────┴────┘
+  Edge           └─────────┘       Edge
+ (vertical)         Line          (horizontal)
+
+┌────┬────┐     ┌────┬────┬────┐
+│    │████│     │    │████│    │
+├────┼────┤     │    │████│    │
+│████│    │     └────┴────┴────┘
+└────┴────┘        Four rect
+
+Calcul :
+--------
+Valeur = Somme(pixels blancs) - Somme(pixels noirs)
+
+2. Image intégrale (Integral Image)
+------------------------------------
+
+Technique d'optimisation pour calculer rapidement la somme de pixels
+dans n'importe quel rectangle.
+
+Calcul en 4 opérations au lieu de parcourir tous les pixels !
+
+3. Cascade de classifieurs
+---------------------------
+
+Série de tests hiérarchiques (cascade) :
+• Étape 1 : Tests simples, rapides → Rejette 90% des zones
+• Étape 2 : Tests plus complexes → Rejette 90% du reste
+• ...
+• Étape N : Tests finaux précis → Valide détection
+
+Si une zone échoue à une étape, elle est immédiatement rejetée.
+→ Performance : seules les zones prometteuses passent tous les tests.
+
+4. Entraînement (AdaBoost)
+---------------------------
+
+Le modèle a été entraîné sur :
+• Milliers d'images positives (contenant des visages)
+• Milliers d'images négatives (sans visages)
+
+Résultat : Fichier XML contenant les caractéristiques apprises.
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ AVANTAGES ET LIMITATIONS                                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Avantages :
+-----------
+✓ Très rapide (temps réel)
+✓ Léger (pas de deep learning)
+✓ Fonctionne sur CPU
+✓ Pré-entraîné (pas besoin de données)
+
+Limitations :
+-------------
+✗ Sensible à l'angle de vue (frontal uniquement)
+✗ Sensible à l'éclairage
+✗ Moins précis que les réseaux de neurones modernes
+✗ Faux positifs possibles
+✗ Ne reconnaît pas l'identité (juste détecte présence)
+
+═══════════════════════════════════════════════════════════════════════════════
+15.5 EXEMPLE COMPLET : DÉTECTION VISAGES TEMPS RÉEL
+═══════════════════════════════════════════════════════════════════════════════
+
+import cv2
+
+# 1. Charger le détecteur
+cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+detector = cv2.CascadeClassifier(cascade_path)
+
+# 2. Ouvrir la webcam
+cap = cv2.VideoCapture(0)
+
+while True:
+    # 3. Lire une frame
+    ret, frame = cap.read()
+    if not ret:
+        break
+    
+    # 4. Convertir en niveau de gris
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    
+    # 5. Détecter les visages
+    faces = detector.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
+    
+    # 6. Dessiner rectangles sur chaque visage
+    for (x, y, w, h) in faces:
+        cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        cv2.putText(
+            frame, 
+            "Visage", 
+            (x, y-10), 
+            cv2.FONT_HERSHEY_SIMPLEX, 
+            0.6, 
+            (0, 255, 0), 
+            2
+        )
+    
+    # 7. Afficher le résultat
+    cv2.imshow("Detection", frame)
+    
+    # 8. Quitter avec 'q'
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+# 9. Libérer ressources
+cap.release()
+cv2.destroyAllWindows()
+
+═══════════════════════════════════════════════════════════════════════════════
+15.6 INTÉGRATION OPENCV + TKINTER
+═══════════════════════════════════════════════════════════════════════════════
+
+Problème : OpenCV affiche avec cv2.imshow() (fenêtres natives)
+             Tkinter a son propre système de fenêtres
+
+Solution : Convertir frames OpenCV → ImageTk pour affichage Tkinter
+
+Étapes :
+--------
+1. Capturer frame OpenCV (BGR)
+2. Convertir BGR → RGB
+3. Redimensionner si nécessaire
+4. Convertir numpy array → PIL Image
+5. Convertir PIL Image → ImageTk.PhotoImage
+6. Afficher dans Label Tkinter
+
+Code exemple :
+--------------
+import cv2
+from PIL import Image, ImageTk
+import tkinter as tk
+
+def update_frame():
+    ret, frame = cap.read()
+    if ret:
+        # Convertir BGR → RGB
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        
+        # Redimensionner
+        frame_resized = cv2.resize(frame_rgb, (640, 480))
+        
+        # Convertir → PIL → ImageTk
+        img = Image.fromarray(frame_resized)
+        photo = ImageTk.PhotoImage(image=img)
+        
+        # Afficher dans Label
+        label.config(image=photo)
+        label.image = photo  # Garde référence (important !)
+    
+    # Rappeler après 50ms (20 FPS)
+    root.after(50, update_frame)
+
+root = tk.Tk()
+label = tk.Label(root)
+label.pack()
+
+cap = cv2.VideoCapture(0)
+update_frame()
+
+root.mainloop()
+cap.release()
+
+IMPORTANT : label.image = photo
+----------------------------
+Sans cette ligne, Python garbage collector détruit l'image immédiatement
+et le Label affiche du noir !
+
+================================================================================
+                          16. GLOSSAIRE
 ================================================================================
 
 BGR : Blue-Green-Red, format couleur OpenCV (inverse du RGB)

@@ -72,11 +72,6 @@ class AddStudentView(ttk.Frame):
             row=0, column=0, sticky="w"
         )
 
-        ttk.Label(self, text="Délai avant capture (ms)").grid(row=6, column=0, sticky="w")
-        ttk.Spinbox(self, from_=0, to=5000, increment=100, textvariable=self.capture_delay_var).grid(
-            row=6, column=1, sticky="w", pady=4
-        )
-
         btn_frame = ttk.Frame(self)
         btn_frame.grid(row=7, column=0, columnspan=2, pady=(8, 0))
         ttk.Button(btn_frame, text="Capturer via webcam", command=self._capture_image).pack(
