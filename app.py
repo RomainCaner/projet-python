@@ -87,6 +87,10 @@ class Application(tk.Tk):
 
 if __name__ == "__main__":
     app = Application()
-    app.mainloop()
+    try:
+        app.mainloop()
+    finally:
+        # Nettoyage : fermer la caméra proprement
+        app.camera_service.release()
 
 
