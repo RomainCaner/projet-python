@@ -1,0 +1,75 @@
+================================================================================
+                    LIENS - PROJET CONTRÔLE D'ACCÈS
+================================================================================
+
+Étudiant : [TON NOM]
+Date de rendu : [DATE]
+Classe : BSI-DSN
+
+================================================================================
+                           DÉPÔT GITHUB
+================================================================================
+
+URL du dépôt GitHub :
+👉 [À COMPLÉTER - ex: https://github.com/ton-username/projet-python-dsn]
+
+Note : Le professeur Olivier Gutierrez (og-edu) a été invité comme collaborateur.
+
+================================================================================
+                          VIDÉO DE DÉMONSTRATION
+================================================================================
+
+URL de la vidéo (Google Drive) :
+👉 [À COMPLÉTER - ex: https://drive.google.com/file/d/...]
+
+Durée : [À COMPLÉTER - ex: 8 minutes]
+
+Contenu de la vidéo :
+- Démonstration de l'authentification administrateur
+- Ajout d'un nouvel étudiant avec capture photo
+- Contrôle d'accès avec reconnaissance réussie
+- Test avec personne non reconnue
+- Démonstration du débit automatique du solde
+- Navigation dans l'interface complète
+
+================================================================================
+                          INFORMATIONS COMPLÉMENTAIRES
+================================================================================
+
+Documents fournis dans le dépôt :
+- README.md : Instructions d'installation et lancement
+- DOCUMENTATION_CODE.txt : Documentation technique complète (2300+ lignes)
+- LIENS.txt : Ce fichier
+- requirements.txt : Dépendances Python
+- Code source complet dans les dossiers models/, services/, ui/, utils/
+
+Identifiants de test :
+- Username : admin
+- Password : admin123
+
+================================================================================
+                          INSTRUCTIONS D'ACCÈS
+================================================================================
+
+Pour le professeur :
+
+1. Cloner le dépôt :
+   git clone [URL_DU_DEPOT]
+   cd projet-python
+
+2. Installer les dépendances :
+   py -m pip install -r requirements.txt
+
+3. Lancer l'application :
+   py app.py
+
+4. Se connecter avec les identifiants admin/admin123
+
+5. Tester les fonctionnalités selon les scénarios décrits dans la vidéo
+
+================================================================================
+
+Pour toute question : [TON_EMAIL@limayrac.fr]
+
+================================================================================
+
